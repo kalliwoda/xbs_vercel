@@ -16,34 +16,38 @@ const PORT = process.env.PORT || 3000;
 // Helper function to calculate total weight
 function calculateWeight(lineItems) {
   return lineItems.reduce((total, item) => {
-    return total + (item.grams * item.quantity / 1000);
+    return total + (item.grams * item.quantity) / 1000;
   }, 0);
 }
 
 // Helper function to check if order uses InPost shipping
 function isInPostOrder(order) {
   const shippingLines = order.shipping_lines || [];
-  return shippingLines.some(line => {
-    const title = line.title || '';
-    return title.includes('InPost z Hiszpanii') || 
-           title.includes('France-Continent (Point Pack et Locker)');
+  return shippingLines.some((line) => {
+    const title = line.title || "";
+    return (
+      title.includes("InPost z Hiszpanii") ||
+      title.includes("France-Continent (Point Pack et Locker)")
+    );
   });
 }
 
 // Helper function to get country from InPost shipping method
 function getInPostCountry(order) {
   const shippingLines = order.shipping_lines || [];
-  const inpostLine = shippingLines.find(line => {
-    const title = line.title || '';
-    return title.includes('InPost z Hiszpanii') || 
-           title.includes('France-Continent (Point Pack et Locker)');
+  const inpostLine = shippingLines.find((line) => {
+    const title = line.title || "";
+    return (
+      title.includes("InPost z Hiszpanii") ||
+      title.includes("France-Continent (Point Pack et Locker)")
+    );
   });
-  
+
   if (inpostLine) {
-    if (inpostLine.title.includes('InPost z Hiszpanii')) return 'PL';
-    if (inpostLine.title.includes('France-Continent')) return 'FR';
+    if (inpostLine.title.includes("InPost z Hiszpanii")) return "PL";
+    if (inpostLine.title.includes("France-Continent")) return "FR";
   }
-  
+
   return null;
 }
 
@@ -58,19 +62,21 @@ async function createXBSShipment(shipmentData) {
     pudoLocationId,
     consignorAddress,
     consigneeAddress,
-    products
+    products,
   } = shipmentData;
 
   if (!consigneeAddress || !products || !weight) {
-    throw new Error("Missing required fields: consigneeAddress, products, weight");
+    throw new Error(
+      "Missing required fields: consigneeAddress, products, weight"
+    );
   }
 
   if (!pudoLocationId) {
     throw new Error("PudoLocationId is required for CLLCT service");
   }
 
-  console.log('🔍 DEBUG: Input pudoLocationId:', pudoLocationId);
-  console.log('🔍 DEBUG: Service:', service);
+  console.log("🔍 DEBUG: Input pudoLocationId:", pudoLocationId);
+  console.log("🔍 DEBUG: Service:", service);
 
   // UPDATED: Follow Spring's exact structure for PUDO orders
   const requestBody = {
@@ -92,7 +98,7 @@ async function createXBSShipment(shipmentData) {
       ShippingValue: "",
       Currency: currency,
       CustomsDuty: "DDU",
-      Description: products.map(p => p.Description).join(", "),
+      Description: products.map((p) => p.Description).join(", "),
       DeclarationType: "",
       DangerousGoods: "N",
       ExportCarrierName: "",
@@ -117,7 +123,7 @@ async function createXBSShipment(shipmentData) {
         Ioss: "",
         GbEori: "",
         AuGst: "",
-        Art23: ""
+        Art23: "",
       },
       ConsigneeAddress: {
         Name: consigneeAddress.Name,
@@ -132,48 +138,56 @@ async function createXBSShipment(shipmentData) {
         Phone: consigneeAddress.Mobile || "",
         Email: consigneeAddress.Email || "",
         Vat: "",
-        PudoLocationId: pudoLocationId // ALSO: Keep in ConsigneeAddress for compatibility
+        PudoLocationId: pudoLocationId, // ALSO: Keep in ConsigneeAddress for compatibility
       },
-      Products: products.map(product => ({
+      Products: products.map((product) => ({
         Description: product.Description,
         Sku: product.Sku || "",
         HsCode: product.HsCode || "3304990000", // Default cosmetics HS code
         OriginCountry: "",
         PurchaseUrl: "",
         Quantity: product.Quantity.toString(),
-        Value: product.Value.toString()
-      }))
-    }
+        Value: product.Value.toString(),
+      })),
+    },
   };
 
-  console.log('🏷️ Creating PUDO shipment with location:', pudoLocationId);
-  console.log('📤 XBS API request body:', JSON.stringify(requestBody, null, 2));
-  
+  console.log("🏷️ Creating PUDO shipment with location:", pudoLocationId);
+  console.log("📤 XBS API request body:", JSON.stringify(requestBody, null, 2));
+
   // IMPORTANT: Check if PudoLocationId is actually in the request
-  console.log('🔍 DEBUG: PudoLocationId in Shipment level?', requestBody.Shipment.PudoLocationId);
-  console.log('🔍 DEBUG: PudoLocationId in ConsigneeAddress?', requestBody.Shipment.ConsigneeAddress.PudoLocationId);
+  console.log(
+    "🔍 DEBUG: PudoLocationId in Shipment level?",
+    requestBody.Shipment.PudoLocationId
+  );
+  console.log(
+    "🔍 DEBUG: PudoLocationId in ConsigneeAddress?",
+    requestBody.Shipment.ConsigneeAddress.PudoLocationId
+  );
 
   // Use production API without testMode
   const apiRes = await fetch("https://mtapi.net/", {
     method: "POST",
-    headers: { 
-      "Content-Type": "application/json"
+    headers: {
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify(requestBody)
+    body: JSON.stringify(requestBody),
   });
 
   if (!apiRes.ok) {
     const errorText = await apiRes.text();
-    console.log('❌ XBS API HTTP Error:', apiRes.status, errorText);
-    throw new Error(`XBS API responded with status ${apiRes.status}: ${errorText}`);
+    console.log("❌ XBS API HTTP Error:", apiRes.status, errorText);
+    throw new Error(
+      `XBS API responded with status ${apiRes.status}: ${errorText}`
+    );
   }
 
   const data = await apiRes.json();
-  console.log('📥 XBS API response:', JSON.stringify(data, null, 2));
+  console.log("📥 XBS API response:", JSON.stringify(data, null, 2));
 
   // Check for successful shipment creation
   if (data.Shipment && data.Shipment.TrackingNumber) {
-    console.log('✅ PUDO shipment created successfully');
+    console.log("✅ PUDO shipment created successfully");
     return {
       success: true,
       trackingNumber: data.Shipment.TrackingNumber,
@@ -181,17 +195,21 @@ async function createXBSShipment(shipmentData) {
       carrier: data.Shipment.Carrier,
       labelImage: data.Shipment.LabelImage,
       labelFormat: data.Shipment.LabelFormat,
-      warning: data.Error // Include any warnings
+      warning: data.Error, // Include any warnings
     };
   }
 
   if (data.ErrorLevel !== 0) {
-    console.log('❌ XBS API Error Details:', {
+    console.log("❌ XBS API Error Details:", {
       ErrorLevel: data.ErrorLevel,
       Error: data.Error,
-      Details: data.Details || 'No additional details'
+      Details: data.Details || "No additional details",
     });
-    throw new Error(`XBS API Error (Level ${data.ErrorLevel}): ${data.Error || 'Unknown error'}`);
+    throw new Error(
+      `XBS API Error (Level ${data.ErrorLevel}): ${
+        data.Error || "Unknown error"
+      }`
+    );
   }
 
   return {
@@ -200,106 +218,118 @@ async function createXBSShipment(shipmentData) {
     shipperReference: data.Shipment.ShipperReference,
     carrier: data.Shipment.Carrier,
     labelImage: data.Shipment.LabelImage,
-    labelFormat: data.Shipment.LabelFormat
+    labelFormat: data.Shipment.LabelFormat,
   };
 }
 
 // Get Shopify order data (REAL DATA from Shopify API)
 async function getShopifyOrder(orderNumber) {
   try {
-    console.log('🔍 Fetching real Shopify order data for:', orderNumber);
-    
+    console.log("🔍 Fetching real Shopify order data for:", orderNumber);
+
     const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN;
     const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-    
+
     if (!shopDomain || !accessToken) {
-      throw new Error('Shopify API credentials not configured');
+      throw new Error("Shopify API credentials not configured");
     }
-    
+
     // Shopify API call to get order by order number
-    const response = await fetch(`https://${shopDomain}/admin/api/2023-10/orders.json?name=${encodeURIComponent(orderNumber)}&status=any`, {
-      headers: {
-        'X-Shopify-Access-Token': accessToken,
-        'Content-Type': 'application/json'
+    const response = await fetch(
+      `https://${shopDomain}/admin/api/2023-10/orders.json?name=${encodeURIComponent(
+        orderNumber
+      )}&status=any`,
+      {
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        },
       }
-    });
-    
+    );
+
     if (!response.ok) {
-      throw new Error(`Shopify API error: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Shopify API error: ${response.status} ${response.statusText}`
+      );
     }
-    
+
     const data = await response.json();
-    
+
     if (!data.orders || data.orders.length === 0) {
       throw new Error(`Order ${orderNumber} not found in Shopify`);
     }
-    
+
     const order = data.orders[0];
-    console.log('✅ Successfully fetched real order data from Shopify');
-    
+    console.log("✅ Successfully fetched real order data from Shopify");
+
     return {
       order_number: order.order_number || order.name,
       email: order.email,
       total_price: order.total_price,
       currency: order.currency,
       shipping_address: {
-        first_name: order.shipping_address?.first_name || order.customer?.first_name || 'Customer',
-        last_name: order.shipping_address?.last_name || order.customer?.last_name || '',
-        address1: order.shipping_address?.address1 || '',
-        address2: order.shipping_address?.address2 || '',
-        city: order.shipping_address?.city || '',
-        zip: order.shipping_address?.zip || '',
-        phone: order.shipping_address?.phone || order.customer?.phone || '',
-        country_code: order.shipping_address?.country_code || 'FR',
-        province: order.shipping_address?.province || '',
-        company: order.shipping_address?.company || ''
+        first_name:
+          order.shipping_address?.first_name ||
+          order.customer?.first_name ||
+          "Customer",
+        last_name:
+          order.shipping_address?.last_name || order.customer?.last_name || "",
+        address1: order.shipping_address?.address1 || "",
+        address2: order.shipping_address?.address2 || "",
+        city: order.shipping_address?.city || "",
+        zip: order.shipping_address?.zip || "",
+        phone: order.shipping_address?.phone || order.customer?.phone || "",
+        country_code: order.shipping_address?.country_code || "FR",
+        province: order.shipping_address?.province || "",
+        company: order.shipping_address?.company || "",
       },
       shipping_lines: order.shipping_lines || [],
-      line_items: order.line_items?.map(item => ({
-        title: item.title,
-        quantity: item.quantity,
-        price: item.price,
-        grams: item.grams,
-        sku: item.sku
-      })) || []
+      line_items:
+        order.line_items?.map((item) => ({
+          title: item.title,
+          quantity: item.quantity,
+          price: item.price,
+          grams: item.grams,
+          sku: item.sku,
+        })) || [],
     };
   } catch (error) {
-    console.error('❌ Error fetching Shopify order:', error);
-    
+    console.error("❌ Error fetching Shopify order:", error);
+
     // Fallback to mock data if API fails (for testing)
-    console.log('🔄 Falling back to mock data for testing');
+    console.log("🔄 Falling back to mock data for testing");
     return {
       order_number: orderNumber,
-      email: 'customer@example.com',
-      total_price: '50.00',
-      currency: 'EUR',
+      email: "customer@example.com",
+      total_price: "50.00",
+      currency: "EUR",
       shipping_address: {
-        first_name: 'Test',
-        last_name: 'Customer',
-        address1: '123 Test Street',
-        address2: '',
-        city: 'Paris',
-        zip: '75001',
-        phone: '+33123456789',
-        country_code: 'FR',
-        province: '',
-        company: ''
+        first_name: "Test",
+        last_name: "Customer",
+        address1: "123 Test Street",
+        address2: "",
+        city: "Paris",
+        zip: "75001",
+        phone: "+33123456789",
+        country_code: "FR",
+        province: "",
+        company: "",
       },
       shipping_lines: [
         {
-          title: 'Points de retrait en France (choix du lieu par e-mail)',
-          price: '5.00'
-        }
+          title: "Points de retrait en France (choix du lieu par e-mail)",
+          price: "5.00",
+        },
       ],
       line_items: [
         {
-          title: 'Test Product',
+          title: "Test Product",
           quantity: 1,
-          price: '45.00',
+          price: "45.00",
           grams: 500,
-          sku: 'TEST-001'
-        }
-      ]
+          sku: "TEST-001",
+        },
+      ],
     };
   }
 }
@@ -315,8 +345,8 @@ app.get("/apps/xbs-pudo", async (req, res) => {
   const city = req.query.city;
 
   if (!country) {
-    return res.status(400).json({ 
-      error: "Country query param is required, e.g. ?country=FR" 
+    return res.status(400).json({
+      error: "Country query param is required, e.g. ?country=FR",
     });
   }
 
@@ -326,8 +356,8 @@ app.get("/apps/xbs-pudo", async (req, res) => {
       Apikey: process.env.XBS_APIKEY,
       Command: "GetLocations",
       Location: {
-        Country: country.toUpperCase()
-      }
+        Country: country.toUpperCase(),
+      },
     };
 
     // Add zip code if provided
@@ -336,19 +366,22 @@ app.get("/apps/xbs-pudo", async (req, res) => {
     }
 
     // Add city if provided (required for IT, optional for others)
-    if (city && country.toUpperCase() === 'IT') {
+    if (city && country.toUpperCase() === "IT") {
       requestBody.Location.City = city;
     }
 
-    console.log('🔍 XBS GetLocations Request:', JSON.stringify(requestBody, null, 2));
+    console.log(
+      "🔍 XBS GetLocations Request:",
+      JSON.stringify(requestBody, null, 2)
+    );
 
     // Use production API
     const apiRes = await fetch("https://mtapi.net/", {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json"
+      headers: {
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
     });
 
     if (!apiRes.ok) {
@@ -356,37 +389,41 @@ app.get("/apps/xbs-pudo", async (req, res) => {
     }
 
     const data = await apiRes.json();
-    console.log('📦 XBS API Response ErrorLevel:', data.ErrorLevel);
+    console.log("📦 XBS API Response ErrorLevel:", data.ErrorLevel);
 
     if (data.ErrorLevel !== 0) {
-      throw new Error(`XBS API Error: ${data.Error || 'Unknown error'}`);
+      throw new Error(`XBS API Error: ${data.Error || "Unknown error"}`);
     }
 
     const points = data.Location || [];
-    console.log(`📍 Found ${points.length} locations for ${country.toUpperCase()}`);
+    console.log(
+      `📍 Found ${points.length} locations for ${country.toUpperCase()}`
+    );
 
     // Filter by carrier based on country
     const filtered = points.filter((loc) => {
-      const carrier = loc.Carrier || '';
-      
+      const carrier = loc.Carrier || "";
+
       if (country.toUpperCase() === "FR") {
         return carrier.toLowerCase().includes("colis prive");
       }
-      
+
       if (country.toUpperCase() === "PL") {
         return carrier.toLowerCase().includes("inpost");
       }
-      
+
       return true;
     });
 
-    console.log(`✅ Filtered to ${filtered.length} locations for carrier requirements`);
+    console.log(
+      `✅ Filtered to ${filtered.length} locations for carrier requirements`
+    );
 
     const locations = filtered.map((loc) => ({
       id: loc.Id,
       name: loc.Name,
       address1: loc.Address1,
-      address2: loc.Address2 || '',
+      address2: loc.Address2 || "",
       city: loc.City,
       zip: loc.Zip,
       country: loc.CountryCode,
@@ -394,23 +431,22 @@ app.get("/apps/xbs-pudo", async (req, res) => {
       service: loc.Service,
       latitude: loc.Latitude,
       longitude: loc.Longitude,
-      businessHours: loc.BusinessHours || ''
+      businessHours: loc.BusinessHours || "",
     }));
 
-    res.json({ 
+    res.json({
       success: true,
       country: country.toUpperCase(),
       totalFound: points.length,
       filtered: locations.length,
-      locations: locations
+      locations: locations,
     });
-
   } catch (err) {
     console.error("🚨 Error in /apps/xbs-pudo:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       error: err.message,
-      country: country.toUpperCase()
+      country: country.toUpperCase(),
     });
   }
 });
@@ -424,7 +460,7 @@ app.post("/apps/xbs-shipment", async (req, res) => {
     console.error("🚨 Error creating XBS shipment:", err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: err.message,
     });
   }
 });
@@ -432,47 +468,44 @@ app.post("/apps/xbs-shipment", async (req, res) => {
 // Complete InPost order after PUDO selection - UPDATED
 app.post("/apps/complete-inpost-order", async (req, res) => {
   try {
-    const {
-      orderId,
-      orderNumber,
-      pudoLocationId,
-      country
-    } = req.body;
+    const { orderId, orderNumber, pudoLocationId, country } = req.body;
 
-    console.log(`📦 Completing InPost order ${orderNumber} with PUDO: ${pudoLocationId}`);
-    console.log('🔍 DEBUG: Received pudoLocationId:', pudoLocationId);
-    console.log('🔍 DEBUG: Type of pudoLocationId:', typeof pudoLocationId);
-    console.log('🔍 DEBUG: Length of pudoLocationId:', pudoLocationId?.length);
-    console.log('🔍 DEBUG: orderId:', orderId);
-    console.log('🔍 DEBUG: country:', country);
+    console.log(
+      `📦 Completing InPost order ${orderNumber} with PUDO: ${pudoLocationId}`
+    );
+    console.log("🔍 DEBUG: Received pudoLocationId:", pudoLocationId);
+    console.log("🔍 DEBUG: Type of pudoLocationId:", typeof pudoLocationId);
+    console.log("🔍 DEBUG: Length of pudoLocationId:", pudoLocationId?.length);
+    console.log("🔍 DEBUG: orderId:", orderId);
+    console.log("🔍 DEBUG: country:", country);
 
     if (!orderNumber) {
       return res.status(400).json({
         success: false,
-        error: 'Order number is required'
+        error: "Order number is required",
       });
     }
 
     if (!pudoLocationId) {
       return res.status(400).json({
         success: false,
-        error: 'PUDO location must be selected'
+        error: "PUDO location must be selected",
       });
     }
 
     const orderData = await getShopifyOrder(orderNumber);
-    
+
     if (!orderData) {
       return res.status(404).json({
         success: false,
-        error: 'Order not found'
+        error: "Order not found",
       });
     }
 
-    const detectedCountry = country || getInPostCountry(orderData) || 'FR';
+    const detectedCountry = country || getInPostCountry(orderData) || "FR";
     const shipping = orderData.shipping_address;
 
-    console.log('🚀 Creating PUDO shipment for country:', detectedCountry);
+    console.log("🚀 Creating PUDO shipment for country:", detectedCountry);
 
     // UPDATED: Enhanced shipment data structure
     const shipmentData = {
@@ -493,55 +526,57 @@ app.post("/apps/complete-inpost-order", async (req, res) => {
         Mobile: "971756727",
         Email: "info@andypola.com",
         Vat: "ESB57818197",
-        Eori: "ESB57818197"
+        Eori: "ESB57818197",
       },
       consigneeAddress: {
         Name: `${shipping.first_name} ${shipping.last_name}`.trim(),
-        Company: shipping.company || '',
+        Company: shipping.company || "",
         Address1: shipping.address1,
-        Address2: shipping.address2 || '',
+        Address2: shipping.address2 || "",
         City: shipping.city,
-        State: shipping.province || '',
+        State: shipping.province || "",
         Zip: shipping.zip,
         CountryCode: detectedCountry,
-        Mobile: shipping.phone || '',
-        Email: orderData.email
+        Mobile: shipping.phone || "",
+        Email: orderData.email,
       },
-      products: orderData.line_items.map(item => ({
+      products: orderData.line_items.map((item) => ({
         Description: item.title,
-        Sku: item.sku || '',
+        Sku: item.sku || "",
         HsCode: "3304990000", // Default cosmetics HS code
         Quantity: item.quantity,
-        Value: parseFloat(item.price) || 0
-      }))
+        Value: parseFloat(item.price) || 0,
+      })),
     };
 
-    console.log('🔍 DEBUG: Complete shipment data before sending to XBS:');
+    console.log("🔍 DEBUG: Complete shipment data before sending to XBS:");
     console.log(JSON.stringify(shipmentData, null, 2));
-    console.log('🔍 DEBUG: pudoLocationId in shipmentData:', shipmentData.pudoLocationId);
+    console.log(
+      "🔍 DEBUG: pudoLocationId in shipmentData:",
+      shipmentData.pudoLocationId
+    );
 
     const result = await createXBSShipment(shipmentData);
 
     if (result.success) {
-      console.log('✅ PUDO shipment created:', result.trackingNumber);
-      
+      console.log("✅ PUDO shipment created:", result.trackingNumber);
+
       res.json({
         success: true,
         trackingNumber: result.trackingNumber,
         carrier: result.carrier,
         country: detectedCountry,
         pudoLocationId: pudoLocationId,
-        message: 'Order successfully sent to InPost/Spring with PUDO location'
+        message: "Order successfully sent to InPost/Spring with PUDO location",
       });
     } else {
-      throw new Error('Failed to create PUDO shipment');
+      throw new Error("Failed to create PUDO shipment");
     }
-
   } catch (error) {
-    console.error('❌ Error completing InPost order:', error);
+    console.error("❌ Error completing InPost order:", error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -594,7 +629,7 @@ app.get("/apps/test-pudo-shipment", async (req, res) => {
           Ioss: "",
           GbEori: "",
           AuGst: "",
-          Art23: ""
+          Art23: "",
         },
         ConsigneeAddress: {
           Name: "Jean Lagarde",
@@ -609,7 +644,7 @@ app.get("/apps/test-pudo-shipment", async (req, res) => {
           Phone: "+33618394111",
           Email: "jean.lagarde@spring-gds.com",
           Vat: "H2500",
-          PudoLocationId: "H4045"
+          PudoLocationId: "H4045",
         },
         Products: [
           {
@@ -619,7 +654,7 @@ app.get("/apps/test-pudo-shipment", async (req, res) => {
             OriginCountry: "",
             PurchaseUrl: "",
             Quantity: "1",
-            Value: "37.37"
+            Value: "37.37",
           },
           {
             Description: "NO YELLOW shampoo 1000 ml",
@@ -628,7 +663,7 @@ app.get("/apps/test-pudo-shipment", async (req, res) => {
             OriginCountry: "",
             PurchaseUrl: "",
             Quantity: "1",
-            Value: "6.71"
+            Value: "6.71",
           },
           {
             Description: "GENESIS serum anti-chute fortifiant 90 ml",
@@ -637,42 +672,49 @@ app.get("/apps/test-pudo-shipment", async (req, res) => {
             OriginCountry: "",
             PurchaseUrl: "",
             Quantity: "1",
-            Value: "27.13"
-          }
-        ]
-      }
+            Value: "27.13",
+          },
+        ],
+      },
     };
 
-    console.log('🧪 Testing PUDO shipment with Spring\'s exact structure');
-    console.log('📤 Request body:', JSON.stringify(requestBody, null, 2));
-    console.log('🔍 PudoLocationId at Shipment level:', requestBody.Shipment.PudoLocationId);
-    console.log('🔍 PudoLocationId in ConsigneeAddress:', requestBody.Shipment.ConsigneeAddress.PudoLocationId);
+    console.log("🧪 Testing PUDO shipment with Spring's exact structure");
+    console.log("📤 Request body:", JSON.stringify(requestBody, null, 2));
+    console.log(
+      "🔍 PudoLocationId at Shipment level:",
+      requestBody.Shipment.PudoLocationId
+    );
+    console.log(
+      "🔍 PudoLocationId in ConsigneeAddress:",
+      requestBody.Shipment.ConsigneeAddress.PudoLocationId
+    );
 
     const apiRes = await fetch("https://mtapi.net/", {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json"
+      headers: {
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
     });
 
     if (!apiRes.ok) {
       const errorText = await apiRes.text();
-      console.log('❌ PUDO test HTTP Error:', apiRes.status, errorText);
-      return res.status(500).json({ error: `HTTP ${apiRes.status}: ${errorText}` });
+      console.log("❌ PUDO test HTTP Error:", apiRes.status, errorText);
+      return res
+        .status(500)
+        .json({ error: `HTTP ${apiRes.status}: ${errorText}` });
     }
 
     const data = await apiRes.json();
-    console.log('📥 PUDO test response:', JSON.stringify(data, null, 2));
+    console.log("📥 PUDO test response:", JSON.stringify(data, null, 2));
 
     res.json({
       success: data.ErrorLevel === 0,
       request: requestBody,
-      response: data
+      response: data,
     });
-
   } catch (error) {
-    console.error('❌ Error in PUDO test:', error);
+    console.error("❌ Error in PUDO test:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -705,7 +747,7 @@ app.get("/apps/test-simple-shipment", async (req, res) => {
           Zip: "03130",
           CountryCode: "ES",
           Mobile: "+34666777888",
-          Email: "info@andypola.com"
+          Email: "info@andypola.com",
         },
         ConsigneeAddress: {
           Name: "Jean Dupont",
@@ -717,7 +759,7 @@ app.get("/apps/test-simple-shipment", async (req, res) => {
           Zip: "75001",
           CountryCode: "FR",
           Mobile: "+33123456789",
-          Email: "customer@example.com"
+          Email: "customer@example.com",
         },
         Products: [
           {
@@ -725,35 +767,36 @@ app.get("/apps/test-simple-shipment", async (req, res) => {
             Quantity: 1,
             Weight: 0.5,
             Value: 45,
-            Currency: "EUR"
-          }
-        ]
-      }
+            Currency: "EUR",
+          },
+        ],
+      },
     };
 
-    console.log('🧪 Testing simple shipment without PUDO');
+    console.log("🧪 Testing simple shipment without PUDO");
 
     const apiRes = await fetch("https://mtapi.net/", {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json"
+      headers: {
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
     });
 
     if (!apiRes.ok) {
       const errorText = await apiRes.text();
-      console.log('❌ Simple shipment HTTP Error:', apiRes.status, errorText);
-      return res.status(500).json({ error: `HTTP ${apiRes.status}: ${errorText}` });
+      console.log("❌ Simple shipment HTTP Error:", apiRes.status, errorText);
+      return res
+        .status(500)
+        .json({ error: `HTTP ${apiRes.status}: ${errorText}` });
     }
 
     const data = await apiRes.json();
-    console.log('📥 Simple shipment response:', JSON.stringify(data, null, 2));
+    console.log("📥 Simple shipment response:", JSON.stringify(data, null, 2));
 
     res.json(data);
-
   } catch (error) {
-    console.error('❌ Error in simple shipment test:', error);
+    console.error("❌ Error in simple shipment test:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -762,17 +805,16 @@ app.get("/apps/test-simple-shipment", async (req, res) => {
 app.get("/apps/check-inpost-order/:orderId", async (req, res) => {
   try {
     const { orderId } = req.params;
-    
+
     res.json({
       needsPudoSelection: true,
-      orderId: orderId
+      orderId: orderId,
     });
-    
   } catch (error) {
-    console.error('❌ Error checking InPost order:', error);
+    console.error("❌ Error checking InPost order:", error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -782,15 +824,15 @@ app.get("/apps/xbs-services", async (req, res) => {
   try {
     const requestBody = {
       Apikey: process.env.XBS_APIKEY,
-      Command: "GetServices"
+      Command: "GetServices",
     };
 
     const apiRes = await fetch("https://mtapi.net/", {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json"
+      headers: {
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
     });
 
     if (!apiRes.ok) {
@@ -803,14 +845,13 @@ app.get("/apps/xbs-services", async (req, res) => {
       success: true,
       allowedServices: data.Services.AllowedServices,
       allowedSpringClear: data.Services.AllowedSpringClear,
-      allServices: data.Services.List
+      allServices: data.Services.List,
     });
-
   } catch (err) {
     console.error("🚨 Error getting XBS services:", err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: err.message,
     });
   }
 });
@@ -824,16 +865,16 @@ app.get("/apps/xbs-track/:trackingNumber", async (req, res) => {
       Apikey: process.env.XBS_APIKEY,
       Command: "TrackShipment",
       Shipment: {
-        TrackingNumber: trackingNumber
-      }
+        TrackingNumber: trackingNumber,
+      },
     };
 
     const apiRes = await fetch("https://mtapi.net/", {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json"
+      headers: {
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
     });
 
     if (!apiRes.ok) {
@@ -846,14 +887,13 @@ app.get("/apps/xbs-track/:trackingNumber", async (req, res) => {
       success: true,
       trackingNumber: data.Shipment.TrackingNumber,
       carrier: data.Shipment.Carrier,
-      events: data.Shipment.Events || []
+      events: data.Shipment.Events || [],
     });
-
   } catch (err) {
     console.error("🚨 Error tracking XBS shipment:", err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: err.message,
     });
   }
 });
@@ -863,7 +903,7 @@ app.get("/apps/xbs-track/:trackingNumber", async (req, res) => {
 app.get("/pudo-selection", (req, res) => {
   const orderId = req.query.orderId;
   const orderNumber = req.query.orderNumber;
-  const country = req.query.country || 'FR';
+  const country = req.query.country || "FR";
 
   // Language content based on country
   const content = {
@@ -884,9 +924,10 @@ app.get("/pudo-selection", (req, res) => {
       processing: "Traitement...",
       completed: "Terminé ✓",
       selectError: "Veuillez sélectionner un point de retrait",
-      successMsg: "Parfait ! Votre commande a été envoyée au point de retrait sélectionné. Numéro de suivi :",
+      successMsg:
+        "Parfait ! Votre commande a été envoyée au point de retrait sélectionné. Numéro de suivi :",
       connectionError: "Erreur de connexion :",
-      processError: "Erreur lors du traitement de la commande :"
+      processError: "Erreur lors du traitement de la commande :",
     },
     PL: {
       title: "Wybierz Punkt Odbioru InPost",
@@ -894,7 +935,7 @@ app.get("/pudo-selection", (req, res) => {
       subtitle: "Wybierz preferowany punkt odbioru InPost",
       orderInfo: "Informacje o zamówieniu",
       orderNumber: "Numer zamówienia",
-      country: "🇵🇱 Polska", 
+      country: "🇵🇱 Polska",
       searchTitle: "Szukaj Punktów Odbioru",
       zipPlaceholder: "Kod pocztowy polski (np: 00-001)",
       cityPlaceholder: "Miasto (opcjonalne)",
@@ -905,17 +946,18 @@ app.get("/pudo-selection", (req, res) => {
       processing: "Przetwarzanie...",
       completed: "Zakończone ✓",
       selectError: "Proszę wybrać punkt odbioru",
-      successMsg: "Doskonale! Twoje zamówienie zostało wysłane do wybranego punktu odbioru. Numer śledzenia:",
+      successMsg:
+        "Doskonale! Twoje zamówienie zostało wysłane do wybranego punktu odbioru. Numer śledzenia:",
       connectionError: "Błąd połączenia:",
-      processError: "Błąd podczas przetwarzania zamówienia:"
-    }
+      processError: "Błąd podczas przetwarzania zamówienia:",
+    },
   };
 
   const lang = content[country] || content.FR;
 
   res.send(`
     <!DOCTYPE html>
-    <html lang="${country === 'PL' ? 'pl' : 'fr'}">
+    <html lang="${country === "PL" ? "pl" : "fr"}">
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1076,15 +1118,21 @@ app.get("/pudo-selection", (req, res) => {
         <div class="content">
           <div class="order-info">
             <h3>${lang.orderInfo}</h3>
-            <p><strong>${lang.orderNumber}:</strong> ${orderNumber || 'No especificado'}</p>
+            <p><strong>${lang.orderNumber}:</strong> ${
+    orderNumber || "No especificado"
+  }</p>
             <p><strong>País:</strong> ${lang.country}</p>
           </div>
           
           <div class="search-section">
             <h3>${lang.searchTitle}</h3>
             <div class="search-box">
-              <input type="text" id="zipInput" placeholder="${lang.zipPlaceholder}" />
-              <input type="text" id="cityInput" placeholder="${lang.cityPlaceholder}" />
+              <input type="text" id="zipInput" placeholder="${
+                lang.zipPlaceholder
+              }" />
+              <input type="text" id="cityInput" placeholder="${
+                lang.cityPlaceholder
+              }" />
               <button onclick="searchLocations()">${lang.searchBtn}</button>
             </div>
           </div>
@@ -1237,16 +1285,571 @@ app.get("/pudo-selection", (req, res) => {
   `);
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+// Operator Dashboard - For operators to select PUDO on behalf of customers
+app.get("/operator-pudo", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Operator PUDO Dashboard</title>
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: #f0f2f5;
+          padding: 20px;
+        }
+        .container {
+          max-width: 1400px;
+          margin: 0 auto;
+        }
+        .header {
+          background: linear-gradient(135deg, #667eea, #764ba2);
+          color: white;
+          padding: 30px;
+          border-radius: 12px;
+          margin-bottom: 30px;
+          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .header h1 { margin-bottom: 5px; }
+        .header p { opacity: 0.9; font-size: 14px; }
+        .badge {
+          background: rgba(255,255,255,0.2);
+          padding: 4px 12px;
+          border-radius: 20px;
+          font-size: 12px;
+          display: inline-block;
+          margin-top: 10px;
+        }
+        .main-grid {
+          display: grid;
+          grid-template-columns: 400px 1fr;
+          gap: 20px;
+          margin-bottom: 20px;
+        }
+        .card {
+          background: white;
+          border-radius: 12px;
+          padding: 25px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .card h2 {
+          color: #333;
+          margin-bottom: 20px;
+          font-size: 18px;
+          padding-bottom: 10px;
+          border-bottom: 2px solid #f0f2f5;
+        }
+        .form-group {
+          margin-bottom: 20px;
+        }
+        .form-group label {
+          display: block;
+          margin-bottom: 8px;
+          color: #555;
+          font-weight: 500;
+          font-size: 14px;
+        }
+        .form-group input, .form-group select {
+          width: 100%;
+          padding: 12px;
+          border: 2px solid #e1e4e8;
+          border-radius: 8px;
+          font-size: 15px;
+          transition: border-color 0.3s;
+        }
+        .form-group input:focus, .form-group select:focus {
+          outline: none;
+          border-color: #667eea;
+        }
+        .btn {
+          width: 100%;
+          padding: 14px;
+          border: none;
+          border-radius: 8px;
+          font-size: 16px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s;
+        }
+        .btn-primary {
+          background: #667eea;
+          color: white;
+        }
+        .btn-primary:hover {
+          background: #5568d3;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        .btn-success {
+          background: #10b981;
+          color: white;
+        }
+        .btn-success:hover {
+          background: #059669;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+        .btn:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+          transform: none;
+        }
+        .order-details {
+          background: #f8f9fa;
+          padding: 15px;
+          border-radius: 8px;
+          margin-bottom: 20px;
+          border-left: 4px solid #667eea;
+        }
+        .order-details p {
+          margin: 8px 0;
+          font-size: 14px;
+          color: #555;
+        }
+        .order-details strong {
+          color: #333;
+        }
+        .loading {
+          text-align: center;
+          padding: 40px;
+          color: #666;
+        }
+        .spinner {
+          border: 3px solid #f3f3f3;
+          border-top: 3px solid #667eea;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+          margin: 0 auto 15px;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        .locations-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+          gap: 15px;
+        }
+        .location-card {
+          border: 2px solid #e1e4e8;
+          border-radius: 10px;
+          padding: 18px;
+          cursor: pointer;
+          transition: all 0.3s;
+          background: white;
+        }
+        .location-card:hover {
+          border-color: #667eea;
+          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+          transform: translateY(-2px);
+        }
+        .location-card.selected {
+          border-color: #667eea;
+          background: #f5f7ff;
+          box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        .location-name {
+          font-weight: 600;
+          color: #333;
+          margin-bottom: 10px;
+          font-size: 15px;
+        }
+        .location-address {
+          color: #666;
+          margin-bottom: 12px;
+          line-height: 1.5;
+          font-size: 13px;
+        }
+        .location-meta {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .location-carrier, .location-id {
+          background: #e0e7ff;
+          color: #4c51bf;
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 500;
+        }
+        .location-id {
+          background: #fef3c7;
+          color: #92400e;
+        }
+        .alert {
+          padding: 15px 20px;
+          border-radius: 8px;
+          margin: 20px 0;
+          font-size: 14px;
+        }
+        .alert-error {
+          background: #fee;
+          color: #c00;
+          border-left: 4px solid #c00;
+        }
+        .alert-success {
+          background: #d4edda;
+          color: #155724;
+          border-left: 4px solid #28a745;
+        }
+        .alert-info {
+          background: #d1ecf1;
+          color: #0c5460;
+          border-left: 4px solid #17a2b8;
+        }
+        .empty-state {
+          text-align: center;
+          padding: 60px 20px;
+          color: #999;
+        }
+        .empty-state svg {
+          width: 80px;
+          height: 80px;
+          margin-bottom: 20px;
+          opacity: 0.3;
+        }
+        .stats {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 20px;
+        }
+        .stat {
+          flex: 1;
+          background: #f8f9fa;
+          padding: 12px;
+          border-radius: 8px;
+          text-align: center;
+        }
+        .stat-value {
+          font-size: 24px;
+          font-weight: 700;
+          color: #667eea;
+        }
+        .stat-label {
+          font-size: 12px;
+          color: #666;
+          margin-top: 4px;
+        }
+        @media (max-width: 1024px) {
+          .main-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        @media (max-width: 768px) {
+          .locations-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🎯 Operator PUDO Dashboard</h1>
+          <p>Select PUDO pickup points on behalf of customers</p>
+          <span class="badge">Operator Mode</span>
+        </div>
+
+        <div class="main-grid">
+          <!-- Left Panel: Order & Search -->
+          <div class="card">
+            <h2>📋 Order Lookup</h2>
+
+            <div class="form-group">
+              <label for="orderNumber">Order Number</label>
+              <input type="text" id="orderNumber" placeholder="e.g., 1001 or #1001" />
+            </div>
+
+            <div class="form-group">
+              <label for="country">Country</label>
+              <select id="country">
+                <option value="FR">🇫🇷 France</option>
+                <option value="PL">🇵🇱 Poland</option>
+              </select>
+            </div>
+
+            <button class="btn btn-primary" onclick="loadOrder()">Load Order Details</button>
+
+            <div id="orderDetailsDiv" style="display: none; margin-top: 25px;">
+              <h2 style="margin-top: 0;">👤 Customer Details</h2>
+              <div id="orderDetailsContent" class="order-details"></div>
+
+              <h2>🔍 Search PUDO Locations</h2>
+              <div class="form-group">
+                <label for="zipInput">Postal Code</label>
+                <input type="text" id="zipInput" placeholder="e.g., 75001" />
+              </div>
+
+              <div class="form-group">
+                <label for="cityInput">City (Optional)</label>
+                <input type="text" id="cityInput" placeholder="e.g., Paris" />
+              </div>
+
+              <button class="btn btn-primary" onclick="searchLocations()">Search Locations</button>
+            </div>
+          </div>
+
+          <!-- Right Panel: PUDO Locations -->
+          <div class="card">
+            <h2>📍 PUDO Locations</h2>
+
+            <div id="statsDiv" style="display: none;" class="stats">
+              <div class="stat">
+                <div class="stat-value" id="totalFound">0</div>
+                <div class="stat-label">Total Found</div>
+              </div>
+              <div class="stat">
+                <div class="stat-value" id="filtered">0</div>
+                <div class="stat-label">Available</div>
+              </div>
+            </div>
+
+            <div id="loadingDiv" class="loading" style="display: none;">
+              <div class="spinner"></div>
+              Searching for PUDO locations...
+            </div>
+
+            <div id="alertDiv"></div>
+
+            <div id="emptyState" class="empty-state">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              </svg>
+              <p>Enter order details and search to view available PUDO locations</p>
+            </div>
+
+            <div id="locationsDiv" class="locations-grid"></div>
+
+            <div id="confirmSection" style="display: none; margin-top: 25px;">
+              <button id="confirmBtn" class="btn btn-success" onclick="confirmSelection()">
+                ✓ Assign Selected PUDO & Create Shipment
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        let selectedLocation = null;
+        let currentOrderData = null;
+        let currentCountry = 'FR';
+        let currentOrderNumber = null;
+
+        function loadOrder() {
+          const orderNumber = document.getElementById('orderNumber').value.trim();
+          const country = document.getElementById('country').value;
+
+          if (!orderNumber) {
+            showAlert('Please enter an order number', 'error');
+            return;
+          }
+
+          currentOrderNumber = orderNumber;
+          currentCountry = country;
+
+          // Show order details form
+          document.getElementById('orderDetailsDiv').style.display = 'block';
+
+          // Try to fetch real order data from Shopify (optional, can fail gracefully)
+          showAlert('Order loaded. You can now search for PUDO locations.', 'info');
+
+          // Pre-fill based on country
+          if (country === 'FR') {
+            document.getElementById('zipInput').placeholder = 'e.g., 75001';
+          } else if (country === 'PL') {
+            document.getElementById('zipInput').placeholder = 'e.g., 00-001';
+          }
+
+          // Reset previous search
+          document.getElementById('locationsDiv').innerHTML = '';
+          document.getElementById('emptyState').style.display = 'block';
+          document.getElementById('confirmSection').style.display = 'none';
+          selectedLocation = null;
+        }
+
+        function searchLocations() {
+          const zip = document.getElementById('zipInput').value.trim();
+          const city = document.getElementById('cityInput').value.trim();
+
+          if (!zip) {
+            showAlert('Please enter a postal code', 'error');
+            return;
+          }
+
+          document.getElementById('loadingDiv').style.display = 'block';
+          document.getElementById('emptyState').style.display = 'none';
+          document.getElementById('alertDiv').innerHTML = '';
+          document.getElementById('locationsDiv').innerHTML = '';
+          document.getElementById('statsDiv').style.display = 'none';
+
+          let url = '/apps/xbs-pudo?country=' + currentCountry + '&zip=' + encodeURIComponent(zip);
+          if (city) {
+            url += '&city=' + encodeURIComponent(city);
+          }
+
+          fetch(url)
+            .then(response => response.json())
+            .then(data => {
+              document.getElementById('loadingDiv').style.display = 'none';
+
+              if (data.success) {
+                displayLocations(data.locations, data.totalFound, data.filtered);
+              } else {
+                showAlert('Error: ' + data.error, 'error');
+                document.getElementById('emptyState').style.display = 'block';
+              }
+            })
+            .catch(error => {
+              document.getElementById('loadingDiv').style.display = 'none';
+              showAlert('Connection error: ' + error.message, 'error');
+              document.getElementById('emptyState').style.display = 'block';
+            });
+        }
+
+        function displayLocations(locations, totalFound, filtered) {
+          const div = document.getElementById('locationsDiv');
+
+          if (locations.length === 0) {
+            document.getElementById('emptyState').style.display = 'block';
+            showAlert('No PUDO locations found in this area. Try a different postal code.', 'info');
+            return;
+          }
+
+          // Show stats
+          document.getElementById('statsDiv').style.display = 'flex';
+          document.getElementById('totalFound').textContent = totalFound || locations.length;
+          document.getElementById('filtered').textContent = filtered || locations.length;
+
+          div.innerHTML = locations.map(loc => \`
+            <div class="location-card" onclick="selectLocation('\${loc.id}', this, \${JSON.stringify(loc).replace(/"/g, '&quot;')})">
+              <div class="location-name">\${loc.name}</div>
+              <div class="location-address">
+                \${loc.address1}\${loc.address2 ? '<br>' + loc.address2 : ''}<br>
+                \${loc.zip} \${loc.city}, \${loc.country}
+              </div>
+              <div class="location-meta">
+                <span class="location-carrier">\${loc.carrier}</span>
+                <span class="location-id">ID: \${loc.id}</span>
+              </div>
+            </div>
+          \`).join('');
+        }
+
+        function selectLocation(locationId, element, locationData) {
+          document.querySelectorAll('.location-card').forEach(card => {
+            card.classList.remove('selected');
+          });
+
+          element.classList.add('selected');
+          selectedLocation = {
+            id: locationId,
+            data: locationData
+          };
+
+          document.getElementById('confirmSection').style.display = 'block';
+          showAlert(\`Selected: \${locationData.name} (ID: \${locationId})\`, 'success');
+        }
+
+        function confirmSelection() {
+          if (!selectedLocation) {
+            showAlert('Please select a PUDO location first', 'error');
+            return;
+          }
+
+          if (!currentOrderNumber) {
+            showAlert('Please load an order first', 'error');
+            return;
+          }
+
+          const confirmBtn = document.getElementById('confirmBtn');
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = '⏳ Processing...';
+
+          const requestData = {
+            orderNumber: currentOrderNumber,
+            pudoLocationId: selectedLocation.id,
+            country: currentCountry
+          };
+
+          console.log('Sending request:', requestData);
+
+          fetch('/apps/complete-inpost-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestData)
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              showAlert(\`✓ Shipment created successfully!<br><strong>Tracking Number:</strong> \${data.trackingNumber}<br><strong>Carrier:</strong> \${data.carrier}<br><strong>PUDO Location:</strong> \${selectedLocation.id}\`, 'success');
+              confirmBtn.textContent = '✓ Completed';
+              confirmBtn.style.background = '#059669';
+
+              // Reset form after success
+              setTimeout(() => {
+                if (confirm('Shipment created! Do you want to process another order?')) {
+                  location.reload();
+                }
+              }, 2000);
+            } else {
+              showAlert('Error creating shipment: ' + data.error, 'error');
+              confirmBtn.disabled = false;
+              confirmBtn.textContent = '✓ Assign Selected PUDO & Create Shipment';
+            }
+          })
+          .catch(error => {
+            showAlert('Connection error: ' + error.message, 'error');
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = '✓ Assign Selected PUDO & Create Shipment';
+          });
+        }
+
+        function showAlert(message, type) {
+          const div = document.getElementById('alertDiv');
+          div.innerHTML = \`<div class="alert alert-\${type}">\${message}</div>\`;
+
+          // Auto-hide info alerts after 5 seconds
+          if (type === 'info') {
+            setTimeout(() => {
+              div.innerHTML = '';
+            }, 5000);
+          }
+        }
+      </script>
+    </body>
+    </html>
+  `);
+});
+
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ XBS PUDO server listening on http://0.0.0.0:${PORT}`);
   console.log(`📍 Available endpoints:`);
   console.log(`   GET  /health - Health check`);
-  console.log(`   GET  /apps/xbs-pudo?country=FR&zip=75001 - Get PUDO locations`);
+  console.log(
+    `   GET  /apps/xbs-pudo?country=FR&zip=75001 - Get PUDO locations`
+  );
   console.log(`   POST /apps/xbs-shipment - Create shipment with PUDO`);
-  console.log(`   POST /apps/complete-inpost-order - Complete InPost order with PUDO selection`);
-  console.log(`   GET  /apps/check-inpost-order/:orderId - Check if order needs PUDO`);
+  console.log(
+    `   POST /apps/complete-inpost-order - Complete InPost order with PUDO selection`
+  );
+  console.log(
+    `   GET  /apps/check-inpost-order/:orderId - Check if order needs PUDO`
+  );
   console.log(`   GET  /apps/xbs-services - Get available services`);
   console.log(`   GET  /apps/xbs-track/:trackingNumber - Track shipment`);
   console.log(`   GET  /pudo-selection - PUDO selection page for customers`);
-  console.log(`🌐 PUDO Selection URL: https://xbs-yje6tg.fly.dev/pudo-selection`);
+  console.log(`   GET  /operator-pudo - Operator dashboard for PUDO selection`);
+  console.log(
+    `🌐 Customer PUDO Selection: https://xbs-yje6tg.fly.dev/pudo-selection`
+  );
+  console.log(
+    `🎯 Operator Dashboard: https://xbs-yje6tg.fly.dev/operator-pudo`
+  );
 });
