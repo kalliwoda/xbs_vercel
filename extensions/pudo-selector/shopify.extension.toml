@@ -16,7 +16,7 @@ uid = "adb5092c-9667-69c1-5bc4-65b6a3fdc1b9c85b051b"
 # url = "https://yourappdomain.com/path"
 [[extensions.targeting]]
 target = "admin.order-details.action.link"
-url = "/operator-pudo?order_id={{ order.id }}"
+url = "/operator-pudo"
 
 # Valid Extension Targets
 #

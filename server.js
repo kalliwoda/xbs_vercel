@@ -1641,7 +1641,14 @@ app.get("/operator-pudo", (req, res) => {
         let currentOrderData = null;
         let currentCountry = 'FR';
         let currentOrderNumber = null;
+        // At the start of your script
+        const urlParams = new URLSearchParams(window.location.search);
+        const orderId = urlParams.get('id');
 
+        if (orderId) {
+          document.getElementById('orderNumber').value = orderId;
+          loadOrder(); // Auto-load the order
+        }
         function loadOrder() {
           const orderNumber = document.getElementById('orderNumber').value.trim();
           const country = document.getElementById('country').value;
