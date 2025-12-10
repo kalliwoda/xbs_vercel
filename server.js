@@ -338,6 +338,10 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/", (req, res) => {
+  res.redirect("/operator-pudo");
+});
+
 // Get PUDO locations using GetLocations command
 app.get("/apps/xbs-pudo", async (req, res) => {
   const country = req.query.country;
