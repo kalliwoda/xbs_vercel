@@ -27,6 +27,7 @@ function isInPostOrder(order) {
     const title = line.title || "";
     return (
       title.includes("InPost z Hiszpanii") ||
+      title.includes("Punkty odbioru InPost") ||
       title.includes("France-Continent (Point Pack et Locker)")
     );
   });
