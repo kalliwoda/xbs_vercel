@@ -2024,6 +2024,68 @@ Address: ${atlasData.address}, ${atlasData.postal_code} ${atlasData.city}
     console.error("⚠️  Error updating Shopify tracking:", error.message);
   }
 }
+// Webhook for order updates (when Atlas adds PUDO data)
+app.post("/api/webhooks/orders-update", async (req, res) => {
+  try {
+    const hmac = req.headers["x-shopify-hmac-sha256"];
+    const shopifyShop = req.headers["x-shopify-shop-domain"];
+    
+    console.log("🔄 Received order UPDATE webhook from:", shopifyShop);
+    
+    const order = req.body;
+    
+    console.log("📦 Updated Order:", order.name, "| ID:", order.id);
+    
+    // Check if this is an InPost/PUDO order
+    if (!isInPostOrder(order)) {
+      console.log("⏭️  Not an InPost order");
+      return res.status(200).json({ message: "OK - Not InPost" });
+    }
+    
+    // Check if Atlas pickup point data exists
+    const noteAttributes = order.note_attributes || [];
+    const pointCode = noteAttributes.find(attr => attr.name === "point_code")?.value;
+    
+    if (!pointCode) {
+      console.log("⏭️  No pickup point selected yet");
+      return res.status(200).json({ message: "OK - No PUDO yet" });
+    }
+    
+    // Check if we already created a shipment for this order
+    const alreadyProcessed = order.tags?.includes("atlas-pudo") || 
+                            order.note?.includes("LABEL READY TO PRINT");
+    
+    if (alreadyProcessed) {
+      console.log("⏭️  Order already processed, skipping");
+      return res.status(200).json({ message: "OK - Already processed" });
+    }
+    
+    console.log("✅ Pickup point found:", pointCode);
+    
+    // Extract all Atlas data
+    const atlasData = {
+      code: pointCode,
+      name: noteAttributes.find(attr => attr.name === "point_name")?.value || "",
+      address: noteAttributes.find(attr => attr.name === "point_address")?.value || "",
+      city: noteAttributes.find(attr => attr.name === "point_city")?.value || "",
+      postal_code: noteAttributes.find(attr => attr.name === "point_postal_code")?.value || "",
+      country: noteAttributes.find(attr => attr.name === "point_country")?.value || "",
+    };
+    
+    console.log("📍 Atlas PUDO Data:", atlasData);
+    
+    const country = atlasData.country || getInPostCountry(order) || "PL";
+    
+    // Create shipment automatically
+    await createAtlasShipment(order, atlasData, country);
+    
+    res.status(200).json({ message: "OK - Shipment created" });
+    
+  } catch (error) {
+    console.error("❌ Webhook error:", error);
+    res.status(200).json({ message: "OK - Error logged", error: error.message });
+  }
+});
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ XBS PUDO server listening on http://0.0.0.0:${PORT}`);
   console.log(`📍 Available endpoints:`);
