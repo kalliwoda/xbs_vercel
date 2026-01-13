@@ -1995,9 +1995,15 @@ Address: ${atlasData.address}, ${atlasData.postal_code} ${atlasData.city}
 → Log into Spring Dashboard to print label
     `.trim();
     
-    // Use the full admin API path with /admin/api/
+    // Extract numeric ID from "gid://shopify/Order/7822796259664" format
+    const numericId = typeof orderId === 'string' && orderId.includes('/')
+      ? orderId.split('/').pop()
+      : orderId;
+    
+    console.log(`📝 Updating Shopify order: ${numericId}`);
+    
     const response = await fetch(
-      `https://${shopDomain}/admin/api/2024-01/orders/${orderId}.json`,
+      `https://${shopDomain}/admin/api/2024-01/orders/${numericId}.json`,
       {
         method: "PUT",
         headers: {
@@ -2013,13 +2019,18 @@ Address: ${atlasData.address}, ${atlasData.postal_code} ${atlasData.city}
       }
     );
     
-    const responseText = await response.text();
-    console.log("📝 Shopify update response:", response.status, responseText);
-    
     if (response.ok) {
+      const result = await response.json();
       console.log("✅ Updated Shopify order with shipping info");
+      return result;
     } else {
-      console.log("⚠️  Could not update Shopify order:", response.status, responseText);
+      const errorText = await response.text();
+      console.log(`⚠️  Could not update Shopify order: ${response.status}`, errorText);
+      
+      // If 404, the order might not exist in this store (test vs prod)
+      if (response.status === 404) {
+        console.log("ℹ️  Order not found - might be in different Shopify store");
+      }
     }
     
   } catch (error) {
