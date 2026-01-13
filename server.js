@@ -1838,7 +1838,191 @@ app.get("/operator-pudo", (req, res) => {
     </html>
   `);
 });
+// ============================================
+// ATLAS PICKUP POINTS WEBHOOK INTEGRATION
+// ============================================
 
+// Webhook endpoint for Shopify orders
+app.post("/api/webhooks/orders-create", async (req, res) => {
+  try {
+    const hmac = req.headers["x-shopify-hmac-sha256"];
+    const shopifyShop = req.headers["x-shopify-shop-domain"];
+    
+    console.log("📥 Received order webhook from:", shopifyShop);
+    
+    const order = req.body;
+    
+    console.log("📦 New Order:", order.name, "| ID:", order.id);
+    
+    // Check if this is an InPost/PUDO order
+    if (!isInPostOrder(order)) {
+      console.log("⏭️  Not an InPost order, skipping PUDO processing");
+      return res.status(200).json({ message: "OK - Not InPost" });
+    }
+    
+    // Check if Atlas pickup point data exists in order attributes
+    const noteAttributes = order.note_attributes || [];
+    const pointCode = noteAttributes.find(attr => attr.name === "point_code")?.value;
+    
+    if (!pointCode) {
+      console.log("⚠️  No pickup point selected yet, order will need manual processing");
+      return res.status(200).json({ message: "OK - No PUDO yet" });
+    }
+    
+    console.log("✅ Pickup point found:", pointCode);
+    
+    // Extract all Atlas data
+    const atlasData = {
+      code: pointCode,
+      name: noteAttributes.find(attr => attr.name === "point_name")?.value || "",
+      address: noteAttributes.find(attr => attr.name === "point_address")?.value || "",
+      city: noteAttributes.find(attr => attr.name === "point_city")?.value || "",
+      postal_code: noteAttributes.find(attr => attr.name === "point_postal_code")?.value || "",
+      country: noteAttributes.find(attr => attr.name === "point_country")?.value || "",
+    };
+    
+    console.log("📍 Atlas PUDO Data:", atlasData);
+    
+    // Determine country
+    const country = atlasData.country || getInPostCountry(order) || "PL";
+    
+    // Create shipment automatically
+    await createAtlasShipment(order, atlasData, country);
+    
+    res.status(200).json({ message: "OK - Shipment created" });
+    
+  } catch (error) {
+    console.error("❌ Webhook error:", error);
+    // Always return 200 to Shopify to prevent retries
+    res.status(200).json({ message: "OK - Error logged", error: error.message });
+  }
+});
+
+// Helper function to create shipment from Atlas data
+async function createAtlasShipment(order, atlasData, country) {
+  try {
+    console.log("🚀 Creating automatic shipment for order:", order.name);
+    
+    const shipping = order.shipping_address;
+    const lineItems = order.line_items || [];
+    
+    // Prepare shipment data
+    const shipmentData = {
+      shipperReference: `SHOP-${order.name}-${Date.now()}`,
+      weight: Math.max(0.1, calculateWeight(lineItems)),
+      value: parseFloat(order.total_price),
+      currency: order.currency,
+      pudoLocationId: atlasData.code,
+      consignorAddress: {
+        Name: "Spring GDS",
+        Company: "Spring GDS",
+        Address1: "Avenida Fuentemar 21",
+        Address2: "",
+        City: "",
+        State: "MADRID",
+        Zip: "28880",
+        CountryCode: "ES",
+        Mobile: "971756727",
+        Email: "info@andypola.com",
+        Vat: "ESB57818197",
+        Eori: "ESB57818197",
+      },
+      consigneeAddress: {
+        Name: `${shipping.first_name} ${shipping.last_name}`.trim(),
+        Company: shipping.company || "",
+        Address1: shipping.address1,
+        Address2: shipping.address2 || "",
+        City: shipping.city,
+        State: shipping.province || "",
+        Zip: shipping.zip,
+        CountryCode: country,
+        Mobile: shipping.phone || "",
+        Email: order.email,
+      },
+      products: lineItems.map((item) => ({
+        Description: item.title,
+        Sku: item.sku || "",
+        HsCode: "3304990000",
+        Quantity: item.quantity,
+        Value: parseFloat(item.price) || 0,
+      })),
+    };
+    
+    console.log("📤 Creating XBS shipment with PUDO:", atlasData.code);
+    
+    const result = await createXBSShipment(shipmentData);
+    
+    if (result.success) {
+      console.log("✅ Automatic shipment created!");
+      console.log("   Tracking Number:", result.trackingNumber);
+      console.log("   Carrier:", result.carrier);
+      console.log("   PUDO Location:", atlasData.code);
+      
+      // Update Shopify order with tracking info
+      await updateShopifyOrderTracking(order.id, result.trackingNumber, result.carrier, atlasData);
+      
+      return result;
+    } else {
+      throw new Error("Shipment creation failed");
+    }
+    
+  } catch (error) {
+    console.error("❌ Error creating automatic shipment:", error);
+    throw error;
+  }
+}
+
+// Helper function to update Shopify order with tracking
+async function updateShopifyOrderTracking(orderId, trackingNumber, carrier, atlasData) {
+  try {
+    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN;
+    const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
+    
+    if (!shopDomain || !accessToken) {
+      console.log("⚠️  Shopify API credentials not configured, skipping tracking update");
+      return;
+    }
+    
+    // Create a clear note for operators
+    const orderNote = `
+✅ LABEL READY TO PRINT IN SPRING DASHBOARD
+
+Tracking: ${trackingNumber}
+Carrier: ${carrier}
+PUDO Location: ${atlasData.name} (${atlasData.code})
+Address: ${atlasData.address}, ${atlasData.postal_code} ${atlasData.city}
+
+→ Log into Spring Dashboard to print label
+    `.trim();
+    
+    const response = await fetch(
+      `https://${shopDomain}/admin/api/2024-01/orders/${orderId}.json`,
+      {
+        method: "PUT",
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          order: {
+            id: orderId,
+            note: orderNote,
+            tags: "atlas-pudo, ready-to-print"
+          },
+        }),
+      }
+    );
+    
+    if (response.ok) {
+      console.log("✅ Updated Shopify order with shipping info");
+    } else {
+      console.log("⚠️  Could not update Shopify order:", response.status);
+    }
+    
+  } catch (error) {
+    console.error("⚠️  Error updating Shopify tracking:", error.message);
+  }
+}
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ XBS PUDO server listening on http://0.0.0.0:${PORT}`);
   console.log(`📍 Available endpoints:`);
