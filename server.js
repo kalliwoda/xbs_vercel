@@ -1980,11 +1980,10 @@ async function updateShopifyOrderTracking(orderId, trackingNumber, carrier, atla
     const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
     
     if (!shopDomain || !accessToken) {
-      console.log("⚠️  Shopify API credentials not configured, skipping tracking update");
+      console.log("⚠️  Shopify API credentials not configured");
       return;
     }
     
-    // Create a clear note for operators
     const orderNote = `
 ✅ LABEL READY TO PRINT IN SPRING DASHBOARD
 
@@ -1996,6 +1995,7 @@ Address: ${atlasData.address}, ${atlasData.postal_code} ${atlasData.city}
 → Log into Spring Dashboard to print label
     `.trim();
     
+    // Use the full admin API path with /admin/api/
     const response = await fetch(
       `https://${shopDomain}/admin/api/2024-01/orders/${orderId}.json`,
       {
@@ -2006,7 +2006,6 @@ Address: ${atlasData.address}, ${atlasData.postal_code} ${atlasData.city}
         },
         body: JSON.stringify({
           order: {
-            id: orderId,
             note: orderNote,
             tags: "atlas-pudo, ready-to-print"
           },
@@ -2014,14 +2013,17 @@ Address: ${atlasData.address}, ${atlasData.postal_code} ${atlasData.city}
       }
     );
     
+    const responseText = await response.text();
+    console.log("📝 Shopify update response:", response.status, responseText);
+    
     if (response.ok) {
       console.log("✅ Updated Shopify order with shipping info");
     } else {
-      console.log("⚠️  Could not update Shopify order:", response.status);
+      console.log("⚠️  Could not update Shopify order:", response.status, responseText);
     }
     
   } catch (error) {
-    console.error("⚠️  Error updating Shopify tracking:", error.message);
+    console.error("⚠️  Error updating Shopify:", error.message);
   }
 }
 // Webhook for order updates (when Atlas adds PUDO data)
