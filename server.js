@@ -26,8 +26,12 @@ function isInPostOrder(order) {
   return shippingLines.some((line) => {
     const title = line.title || "";
     return (
+      // Poland - InPost
       title.includes("InPost z Hiszpanii") ||
       title.includes("Punkty odbioru InPost") ||
+      
+      // France - Colis Privé
+      title.includes("Points de retrait en France") ||
       title.includes("France-Continent (Point Pack et Locker)")
     );
   });
@@ -36,20 +40,25 @@ function isInPostOrder(order) {
 // Helper function to get country from InPost shipping method
 function getInPostCountry(order) {
   const shippingLines = order.shipping_lines || [];
-  const inpostLine = shippingLines.find((line) => {
+  
+  for (const line of shippingLines) {
     const title = line.title || "";
-    return (
-      title.includes("InPost z Hiszpanii") ||
-      title.includes("France-Continent (Point Pack et Locker)")
-    );
-  });
-
-  if (inpostLine) {
-    if (inpostLine.title.includes("InPost z Hiszpanii")) return "PL";
-    if (inpostLine.title.includes("France-Continent")) return "FR";
+    
+    // France - check first
+    if (title.includes("Points de retrait en France") || 
+        title.includes("France-Continent")) {
+      return "FR";
+    }
+    
+    // Poland
+    if (title.includes("InPost z Hiszpanii") || 
+        title.includes("Punkty odbioru InPost")) {
+      return "PL";
+    }
   }
-
-  return null;
+  
+  // Fallback to shipping address country
+  return order.shipping_address?.country_code || "PL";
 }
 
 // Helper function to create XBS shipment - UPDATED for PUDO
