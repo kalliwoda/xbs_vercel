@@ -60,7 +60,75 @@ function getInPostCountry(order) {
   // Fallback to shipping address country
   return order.shipping_address?.country_code || "PL";
 }
-
+// Helper function to validate and format phone numbers
+function getValidPhone(shipping, order, country) {
+  // Get phone from all possible sources
+  let phone = shipping.phone || order.phone || order.customer?.phone || '';
+  
+  console.log(`📱 RAW phone received: "${phone}" for country: ${country}`);
+  
+  // CRITICAL: Clean the phone number - remove ALL non-digit characters except +
+  phone = phone.replace(/[\s\-\(\)\.]/g, '');
+  
+  console.log(`📱 CLEANED phone: "${phone}"`);
+  
+  if (country === 'PL') {
+    // Case 1: Already has +48 prefix
+    if (phone.match(/^\+48\d{9}$/)) {
+      console.log('✅ Valid: +48XXXXXXXXX format');
+      return phone;
+    }
+    
+    // Case 2: Has 48 prefix but missing +
+    if (phone.match(/^48\d{9}$/)) {
+      console.log('✅ Valid: 48XXXXXXXXX format, adding +');
+      return '+' + phone;
+    }
+    
+    // Case 3: Just 9 digits (Polish local format)
+    if (phone.match(/^\d{9}$/)) {
+      console.log('✅ Valid: XXXXXXXXX format, adding +48');
+      return '+48' + phone;
+    }
+    
+    // Case 4: Invalid format
+    console.log(`⚠️  INVALID Polish phone: "${phone}" - using dummy +48000000000`);
+    return '+48000000000';
+    
+  } else if (country === 'FR') {
+    // Case 1: Already has +33 prefix
+    if (phone.match(/^\+33\d{9}$/)) {
+      console.log('✅ Valid: +33XXXXXXXXX format');
+      return phone;
+    }
+    
+    // Case 2: Has 33 prefix but missing +
+    if (phone.match(/^33\d{9}$/)) {
+      console.log('✅ Valid: 33XXXXXXXXX format, adding +');
+      return '+' + phone;
+    }
+    
+    // Case 3: French local format starting with 0
+    if (phone.match(/^0\d{9}$/)) {
+      console.log('✅ Valid: 0XXXXXXXXX format, converting to +33');
+      return '+33' + phone.substring(1);
+    }
+    
+    // Case 4: Just 9 digits
+    if (phone.match(/^\d{9}$/)) {
+      console.log('✅ Valid: XXXXXXXXX format, adding +33');
+      return '+33' + phone;
+    }
+    
+    // Case 5: Invalid format
+    console.log(`⚠️  INVALID French phone: "${phone}" - using dummy +33000000000`);
+    return '+33000000000';
+  }
+  
+  // Unknown country
+  console.log(`⚠️  Unknown country: ${country} - using dummy`);
+  return country === 'FR' ? '+33000000000' : '+48000000000';
+}
 // Helper function to create XBS shipment - UPDATED for PUDO
 async function createXBSShipment(shipmentData) {
   const {
@@ -1946,7 +2014,7 @@ async function createAtlasShipment(order, atlasData, country) {
         State: shipping.province || "",
         Zip: shipping.zip,
         CountryCode: country,
-        Mobile: shipping.phone || "",
+        Mobile: getValidPhone(shipping, order, country),
         Email: order.email,
       },
       products: lineItems.map((item) => ({
